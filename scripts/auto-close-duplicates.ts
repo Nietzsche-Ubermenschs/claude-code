@@ -25,7 +25,7 @@ interface GitHubReaction {
   content: string;
 }
 
-async function githubRequest<T>(endpoint: string, token: string, method: string = 'GET', body?: any): Promise<T> {
+export async function githubRequest<T>(endpoint: string, token: string, method: string = 'GET', body?: any): Promise<T> {
   const response = await fetch(`https://api.github.com${endpoint}`, {
     method,
     headers: {
@@ -271,7 +271,9 @@ async function autoCloseDuplicates(): Promise<void> {
   );
 }
 
-autoCloseDuplicates().catch(console.error);
+if (import.meta.main) {
+  autoCloseDuplicates().catch(console.error);
+}
 
 // Make it a module
 export {};
