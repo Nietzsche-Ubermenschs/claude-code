@@ -6,43 +6,7 @@ declare global {
   };
 }
 
-interface GitHubIssue {
-  number: number;
-  title: string;
-  state: string;
-  state_reason?: string;
-  user: { id: number };
-  created_at: string;
-  closed_at?: string;
-}
-
-interface GitHubComment {
-  id: number;
-  body: string;
-  created_at: string;
-  user: { type: string; id: number };
-}
-
-async function githubRequest<T>(endpoint: string, token: string, method: string = 'GET', body?: any): Promise<T> {
-  const response = await fetch(`https://api.github.com${endpoint}`, {
-    method,
-    headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: "application/vnd.github.v3+json",
-      "User-Agent": "backfill-duplicate-comments-script",
-      ...(body && { "Content-Type": "application/json" }),
-    },
-    ...(body && { body: JSON.stringify(body) }),
-  });
-
-  if (!response.ok) {
-    throw new Error(
-      `GitHub API request failed: ${response.status} ${response.statusText}`
-    );
-  }
-
-  return response.json();
-}
+import { type GitHubIssue, type GitHubComment, githubRequest } from "./github-utils";
 
 async function triggerDedupeWorkflow(
   owner: string,
@@ -59,13 +23,14 @@ async function triggerDedupeWorkflow(
   await githubRequest(
     `/repos/${owner}/${repo}/actions/workflows/claude-dedupe-issues.yml/dispatches`,
     token,
-    'POST',
+    "POST",
     {
-      ref: 'main',
+      ref: "main",
       inputs: {
-        issue_number: issueNumber.toString()
-      }
-    }
+        issue_number: issueNumber.toString(),
+      },
+    },
+    "backfill-duplicate-comments-script"
   );
 }
 
@@ -104,7 +69,10 @@ Environment Variables:
   while (true) {
     const pageIssues: GitHubIssue[] = await githubRequest(
       `/repos/${owner}/${repo}/issues?state=all&per_page=${perPage}&page=${page}&sort=created&direction=desc`,
-      token
+      token,
+      "GET",
+      undefined,
+      "backfill-duplicate-comments-script"
     );
     
     if (pageIssues.length === 0) break;
@@ -151,7 +119,10 @@ Environment Variables:
     console.log(`[DEBUG] Fetching comments for issue #${issue.number}...`);
     const comments: GitHubComment[] = await githubRequest(
       `/repos/${owner}/${repo}/issues/${issue.number}/comments`,
-      token
+      token,
+      "GET",
+      undefined,
+      "backfill-duplicate-comments-script"
     );
     console.log(
       `[DEBUG] Issue #${issue.number} has ${comments.length} comments`

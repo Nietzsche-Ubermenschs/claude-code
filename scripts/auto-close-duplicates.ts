@@ -6,45 +6,7 @@ declare global {
   };
 }
 
-interface GitHubIssue {
-  number: number;
-  title: string;
-  user: { id: number };
-  created_at: string;
-}
-
-interface GitHubComment {
-  id: number;
-  body: string;
-  created_at: string;
-  user: { type: string; id: number };
-}
-
-interface GitHubReaction {
-  user: { id: number };
-  content: string;
-}
-
-async function githubRequest<T>(endpoint: string, token: string, method: string = 'GET', body?: any): Promise<T> {
-  const response = await fetch(`https://api.github.com${endpoint}`, {
-    method,
-    headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: "application/vnd.github.v3+json",
-      "User-Agent": "auto-close-duplicates-script",
-      ...(body && { "Content-Type": "application/json" }),
-    },
-    ...(body && { body: JSON.stringify(body) }),
-  });
-
-  if (!response.ok) {
-    throw new Error(
-      `GitHub API request failed: ${response.status} ${response.statusText}`
-    );
-  }
-
-  return response.json();
-}
+import { type GitHubIssue, type GitHubComment, type GitHubReaction, githubRequest } from "./github-utils";
 
 function extractDuplicateIssueNumber(commentBody: string): number | null {
   // Try to match #123 format first
@@ -73,27 +35,28 @@ async function closeIssueAsDuplicate(
   await githubRequest(
     `/repos/${owner}/${repo}/issues/${issueNumber}`,
     token,
-    'PATCH',
+    "PATCH",
     {
-      state: 'closed',
-      state_reason: 'duplicate',
-      labels: ['duplicate']
-    }
+      state: "closed",
+      state_reason: "duplicate",
+      labels: ["duplicate"],
+    },
+    "auto-close-duplicates-script"
   );
 
   await githubRequest(
     `/repos/${owner}/${repo}/issues/${issueNumber}/comments`,
     token,
-    'POST',
+    "POST",
     {
       body: `This issue has been automatically closed as a duplicate of #${duplicateOfNumber}.
 
 If this is incorrect, please re-open this issue or create a new one.
 
-🤖 Generated with [Claude Code](https://claude.ai/code)`
-    }
+🤖 Generated with [Claude Code](https://claude.ai/code)`,
+    },
+    "auto-close-duplicates-script"
   );
-
 }
 
 async function autoCloseDuplicates(): Promise<void> {
@@ -123,7 +86,10 @@ async function autoCloseDuplicates(): Promise<void> {
   while (true) {
     const pageIssues: GitHubIssue[] = await githubRequest(
       `/repos/${owner}/${repo}/issues?state=open&per_page=${perPage}&page=${page}`,
-      token
+      token,
+      "GET",
+      undefined,
+      "auto-close-duplicates-script"
     );
     
     if (pageIssues.length === 0) break;
@@ -155,7 +121,10 @@ async function autoCloseDuplicates(): Promise<void> {
     console.log(`[DEBUG] Fetching comments for issue #${issue.number}...`);
     const comments: GitHubComment[] = await githubRequest(
       `/repos/${owner}/${repo}/issues/${issue.number}/comments`,
-      token
+      token,
+      "GET",
+      undefined,
+      "auto-close-duplicates-script"
     );
     console.log(
       `[DEBUG] Issue #${issue.number} has ${comments.length} comments`
@@ -219,7 +188,10 @@ async function autoCloseDuplicates(): Promise<void> {
     );
     const reactions: GitHubReaction[] = await githubRequest(
       `/repos/${owner}/${repo}/issues/comments/${lastDupeComment.id}/reactions`,
-      token
+      token,
+      "GET",
+      undefined,
+      "auto-close-duplicates-script"
     );
     console.log(
       `[DEBUG] Issue #${issue.number} - duplicate comment has ${reactions.length} reactions`
