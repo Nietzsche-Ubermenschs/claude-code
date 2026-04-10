@@ -205,12 +205,19 @@ class RuleEngine:
             if field == 'reason':
                 return input_data.get('reason', '')
             elif field == 'transcript':
+                # Check cache first
+                if '_transcript_content' in input_data:
+                    return input_data['_transcript_content']
+
                 # Read transcript file if path provided
                 transcript_path = input_data.get('transcript_path')
                 if transcript_path:
                     try:
                         with open(transcript_path, 'r') as f:
-                            return f.read()
+                            content = f.read()
+                            # Cache the content to avoid redundant I/O
+                            input_data['_transcript_content'] = content
+                            return content
                     except FileNotFoundError:
                         print(f"Warning: Transcript file not found: {transcript_path}", file=sys.stderr)
                         return ''
