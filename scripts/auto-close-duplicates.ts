@@ -291,6 +291,144 @@ async function autoCloseDuplicates(): Promise<void> {
     });
 
   await Promise.all(promises);
+  for (const issue of issues) {
+    processedCount++;
+    console.log(
+      `[DEBUG] Processing issue #${issue.number} (${processedCount}/${issues.length}): ${issue.title}`,
+    );
+
+    console.log(`[DEBUG] Fetching comments for issue #${issue.number}...`);
+    const comments: GitHubComment[] = await githubRequest(
+      `/repos/${owner}/${repo}/issues/${issue.number}/comments`,
+      token,
+    );
+    console.log(
+      `[DEBUG] Issue #${issue.number} has ${comments.length} comments`,
+    );
+
+    let lastDupeComment: GitHubComment | null = null;
+    let commentsAfterDupeCount = 0;
+    let dupeCommentsCount = 0;
+
+    for (let i = comments.length - 1; i >= 0; i--) {
+      const comment = comments[i];
+      const isDupeComment =
+        comment.body.includes("Found") &&
+        comment.body.includes("possible duplicate") &&
+        comment.user.type === "Bot";
+
+      if (isDupeComment) {
+        dupeCommentsCount++;
+        if (!lastDupeComment) {
+          lastDupeComment = comment;
+        }
+      } else if (!lastDupeComment) {
+        commentsAfterDupeCount++;
+      }
+    }
+
+    console.log(
+      `[DEBUG] Issue #${issue.number} has ${dupeCommentsCount} duplicate detection comments`,
+    );
+
+    if (!lastDupeComment) {
+      console.log(
+        `[DEBUG] Issue #${issue.number} - no duplicate comments found, skipping`,
+      );
+      continue;
+    }
+
+    console.log(
+      `[DEBUG] Issue #${
+        issue.number
+      } - most recent duplicate comment from: ${lastDupeComment.created_at}`,
+    );
+
+    if (lastDupeComment.created_at > threeDaysAgoIso) {
+      console.log(
+        `[DEBUG] Issue #${issue.number} - duplicate comment is too recent, skipping`,
+      );
+      continue;
+    }
+    console.log(
+      `[DEBUG] Issue #${
+        issue.number
+      } - duplicate comment is old enough (${Math.floor(
+        (Date.now() - new Date(lastDupeComment.created_at).getTime()) /
+          (1000 * 60 * 60 * 24),
+      )} days)`,
+    );
+
+    console.log(
+      `[DEBUG] Issue #${issue.number} - ${commentsAfterDupeCount} comments after duplicate detection`,
+    );
+
+    if (commentsAfterDupeCount > 0) {
+      console.log(
+        `[DEBUG] Issue #${issue.number} - has activity after duplicate comment, skipping`,
+      );
+      continue;
+    }
+
+    console.log(
+      `[DEBUG] Issue #${issue.number} - checking reactions on duplicate comment...`,
+    );
+    const reactions: GitHubReaction[] = await githubRequest(
+      `/repos/${owner}/${repo}/issues/comments/${lastDupeComment.id}/reactions`,
+      token,
+    );
+    console.log(
+      `[DEBUG] Issue #${issue.number} - duplicate comment has ${reactions.length} reactions`,
+    );
+
+    const authorThumbsDown = reactions.some(
+      (reaction) =>
+        reaction.user.id === issue.user.id && reaction.content === "-1",
+    );
+    console.log(
+      `[DEBUG] Issue #${issue.number} - author thumbs down reaction: ${authorThumbsDown}`,
+    );
+
+    if (authorThumbsDown) {
+      console.log(
+        `[DEBUG] Issue #${issue.number} - author disagreed with duplicate detection, skipping`,
+      );
+      continue;
+    }
+
+    const duplicateIssueNumber = extractDuplicateIssueNumber(
+      lastDupeComment.body,
+    );
+    if (!duplicateIssueNumber) {
+      console.log(
+        `[DEBUG] Issue #${issue.number} - could not extract duplicate issue number from comment, skipping`,
+      );
+      continue;
+    }
+
+    candidateCount++;
+    const issueUrl = `https://github.com/${owner}/${repo}/issues/${issue.number}`;
+
+    try {
+      console.log(
+        `[INFO] Auto-closing issue #${issue.number} as duplicate of #${duplicateIssueNumber}: ${issueUrl}`,
+      );
+      await closeIssueAsDuplicate(
+        owner,
+        repo,
+        issue.number,
+        duplicateIssueNumber,
+        token,
+      );
+      console.log(
+        `[SUCCESS] Successfully closed issue #${issue.number} as duplicate of #${duplicateIssueNumber}`,
+      );
+    } catch (error) {
+      console.error(
+        `[ERROR] Failed to close issue #${issue.number} as duplicate: ${error}`,
+      );
+    }
+  }
 
   console.log(
     `[DEBUG] Script completed. Processed ${processedCount} issues, found ${candidateCount} candidates for auto-close`,
