@@ -120,6 +120,9 @@ export async function autoCloseDuplicates(): Promise<void> {
 
   const threeDaysAgo = new Date();
   threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
+  const threeDaysAgoISO = threeDaysAgo.toISOString();
+  console.log(
+    `[DEBUG] Checking for duplicate comments older than: ${threeDaysAgoISO}`,
   const threeDaysAgoIso = threeDaysAgo.toISOString();
   console.log(
     `[DEBUG] Checking for duplicate comments older than: ${threeDaysAgo.toISOString()}`,
@@ -141,6 +144,7 @@ export async function autoCloseDuplicates(): Promise<void> {
 
     // Filter for issues created more than 3 days ago
     const oldEnoughIssues = pageIssues.filter(
+      (issue) => issue.created_at <= threeDaysAgoISO,
       (issue) => new Date(issue.created_at) <= threeDaysAgo,
     // Filter for issues created more than 3 days ago using string comparison
     // Filter for issues created more than 3 days ago
@@ -335,6 +339,9 @@ export async function autoCloseDuplicates(): Promise<void> {
       `[DEBUG] Issue #${issue.number} has ${comments.length} comments`,
     );
 
+    let lastDupeComment = null;
+    let commentsAfterDupeCount = 0;
+    let totalDupeComments = 0;
     let lastDupeComment: GitHubComment | null = null;
     let commentsAfterDupeCount = 0;
     let dupeCommentsCount = 0;
@@ -344,9 +351,14 @@ export async function autoCloseDuplicates(): Promise<void> {
       const isDupeComment =
         comment.body.includes("Found") &&
         comment.body.includes("possible duplicate") &&
+        comment.user.type === "Bot",
+    );
+    console.log(
+      `[DEBUG] Issue #${issue.number} has ${dupeComments.length} duplicate detection comments`,
         comment.user.type === "Bot";
 
       if (isDupeComment) {
+        totalDupeComments++;
         dupeCommentsCount++;
         if (!lastDupeComment) {
           lastDupeComment = comment;
@@ -357,6 +369,7 @@ export async function autoCloseDuplicates(): Promise<void> {
     }
 
     console.log(
+      `[DEBUG] Issue #${issue.number} has ${totalDupeComments} duplicate detection comments`,
       `[DEBUG] Issue #${issue.number} has ${dupeCommentsCount} duplicate detection comments`,
     );
 
@@ -392,7 +405,14 @@ export async function autoCloseDuplicates(): Promise<void> {
         } - duplicate comment is old enough (${Math.floor(
           (Date.now() - dupeCommentDate.getTime()) / (1000 * 60 * 60 * 24),
         )} days)`,
+    const dupeCommentDateISO = lastDupeComment.created_at;
     console.log(
+      `[DEBUG] Issue #${issue.number} - most recent duplicate comment from: ${dupeCommentDateISO}`,
+    );
+
+    if (dupeCommentDateISO > threeDaysAgoISO) {
+    console.log(
+      `[DEBUG] Issue #${issue.number} - most recent duplicate comment from: ${dupeCommentDate.toISOString()}`,
       `[DEBUG] Issue #${
         issue.number
       } - most recent duplicate comment from: ${lastDupeComment.created_at}`,
@@ -404,10 +424,21 @@ export async function autoCloseDuplicates(): Promise<void> {
       );
       continue;
     }
+
+    const dupeCommentDate = new Date(dupeCommentDateISO);
     console.log(
+      `[DEBUG] Issue #${issue.number} - duplicate comment is old enough (${Math.floor((Date.now() - dupeCommentDate.getTime()) / (1000 * 60 * 60 * 24))} days)`,
+    );
+
+    const commentsAfterDupe = comments.filter(
+      (comment) => new Date(comment.created_at) > dupeCommentDate,
+    );
+    console.log(
+      `[DEBUG] Issue #${issue.number} - ${commentsAfterDupe.length} comments after duplicate detection`,
       `[DEBUG] Issue #${
         issue.number
       } - duplicate comment is old enough (${Math.floor(
+        (Date.now() - dupeCommentDate.getTime()) / (1000 * 60 * 60 * 24),
         (Date.now() - new Date(lastDupeComment.created_at).getTime()) /
           (1000 * 60 * 60 * 24),
       )} days)`,
