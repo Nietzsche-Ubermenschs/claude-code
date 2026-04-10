@@ -120,8 +120,12 @@ export async function autoCloseDuplicates(): Promise<void> {
 
   const threeDaysAgo = new Date();
   threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
+  const threeDaysAgoISO = threeDaysAgo.toISOString();
+  console.log(
+    `[DEBUG] Checking for duplicate comments older than: ${threeDaysAgoISO}`,
   const threeDaysAgoIso = threeDaysAgo.toISOString();
   console.log(
+    `[DEBUG] Checking for duplicate comments older than: ${threeDaysAgo.toISOString()}`,
     `[DEBUG] Checking for duplicate comments older than: ${threeDaysAgoIso}`,
   );
 
@@ -138,6 +142,10 @@ export async function autoCloseDuplicates(): Promise<void> {
 
     if (pageIssues.length === 0) break;
 
+    // Filter for issues created more than 3 days ago
+    const oldEnoughIssues = pageIssues.filter(
+      (issue) => issue.created_at <= threeDaysAgoISO,
+      (issue) => new Date(issue.created_at) <= threeDaysAgo,
     // Filter for issues created more than 3 days ago using string comparison
     // Filter for issues created more than 3 days ago
     // String comparison of ISO-8601 timestamps is faster and works correctly
@@ -429,6 +437,9 @@ export async function autoCloseDuplicates(): Promise<void> {
       `[DEBUG] Issue #${issue.number} has ${comments.length} comments`,
     );
 
+    let lastDupeComment = null;
+    let commentsAfterDupeCount = 0;
+    let totalDupeComments = 0;
     let lastDupeComment: GitHubComment | null = null;
     let commentsAfterDupeCount = 0;
     let dupeCommentsCount = 0;
@@ -438,9 +449,14 @@ export async function autoCloseDuplicates(): Promise<void> {
       const isDupeComment =
         comment.body.includes("Found") &&
         comment.body.includes("possible duplicate") &&
+        comment.user.type === "Bot",
+    );
+    console.log(
+      `[DEBUG] Issue #${issue.number} has ${dupeComments.length} duplicate detection comments`,
         comment.user.type === "Bot";
 
       if (isDupeComment) {
+        totalDupeComments++;
         dupeCommentsCount++;
         if (!lastDupeComment) {
           lastDupeComment = comment;
@@ -451,6 +467,7 @@ export async function autoCloseDuplicates(): Promise<void> {
     }
 
     console.log(
+      `[DEBUG] Issue #${issue.number} has ${totalDupeComments} duplicate detection comments`,
       `[DEBUG] Issue #${issue.number} has ${dupeCommentsCount} duplicate detection comments`,
     );
 
@@ -458,10 +475,42 @@ export async function autoCloseDuplicates(): Promise<void> {
       console.log(
         `[DEBUG] Issue #${issue.number} - no duplicate comments found, skipping`,
       );
-      continue;
-    }
 
+      if (dupeComments.length === 0) {
+        console.log(
+          `[DEBUG] Issue #${issue.number} - no duplicate comments found, skipping`,
+        );
+        continue;
+      }
+
+      const lastDupeComment = dupeComments[dupeComments.length - 1];
+      const dupeCommentDate = new Date(lastDupeComment.created_at);
+      console.log(
+        `[DEBUG] Issue #${
+          issue.number
+        } - most recent duplicate comment from: ${dupeCommentDate.toISOString()}`,
+      );
+
+      if (dupeCommentDate > threeDaysAgo) {
+        console.log(
+          `[DEBUG] Issue #${issue.number} - duplicate comment is too recent, skipping`,
+        );
+        continue;
+      }
+      console.log(
+        `[DEBUG] Issue #${
+          issue.number
+        } - duplicate comment is old enough (${Math.floor(
+          (Date.now() - dupeCommentDate.getTime()) / (1000 * 60 * 60 * 24),
+        )} days)`,
+    const dupeCommentDateISO = lastDupeComment.created_at;
     console.log(
+      `[DEBUG] Issue #${issue.number} - most recent duplicate comment from: ${dupeCommentDateISO}`,
+    );
+
+    if (dupeCommentDateISO > threeDaysAgoISO) {
+    console.log(
+      `[DEBUG] Issue #${issue.number} - most recent duplicate comment from: ${dupeCommentDate.toISOString()}`,
       `[DEBUG] Issue #${
         issue.number
       } - most recent duplicate comment from: ${lastDupeComment.created_at}`,
@@ -473,10 +522,21 @@ export async function autoCloseDuplicates(): Promise<void> {
       );
       continue;
     }
+
+    const dupeCommentDate = new Date(dupeCommentDateISO);
     console.log(
+      `[DEBUG] Issue #${issue.number} - duplicate comment is old enough (${Math.floor((Date.now() - dupeCommentDate.getTime()) / (1000 * 60 * 60 * 24))} days)`,
+    );
+
+    const commentsAfterDupe = comments.filter(
+      (comment) => new Date(comment.created_at) > dupeCommentDate,
+    );
+    console.log(
+      `[DEBUG] Issue #${issue.number} - ${commentsAfterDupe.length} comments after duplicate detection`,
       `[DEBUG] Issue #${
         issue.number
       } - duplicate comment is old enough (${Math.floor(
+        (Date.now() - dupeCommentDate.getTime()) / (1000 * 60 * 60 * 24),
         (Date.now() - new Date(lastDupeComment.created_at).getTime()) /
           (1000 * 60 * 60 * 24),
       )} days)`,
@@ -490,9 +550,20 @@ export async function autoCloseDuplicates(): Promise<void> {
       console.log(
         `[DEBUG] Issue #${issue.number} - has activity after duplicate comment, skipping`,
       );
-      continue;
-    }
 
+      const commentsAfterDupe = comments.filter(
+        (comment) => new Date(comment.created_at) > dupeCommentDate,
+      );
+      console.log(
+        `[DEBUG] Issue #${issue.number} - ${commentsAfterDupe.length} comments after duplicate detection`,
+      );
+
+      if (commentsAfterDupe.length > 0) {
+        console.log(
+          `[DEBUG] Issue #${issue.number} - has activity after duplicate comment, skipping`,
+        );
+        continue;
+      }
     console.log(
       `[DEBUG] Issue #${issue.number} - checking reactions on duplicate comment...`,
     );
@@ -512,8 +583,34 @@ export async function autoCloseDuplicates(): Promise<void> {
       `[DEBUG] Issue #${issue.number} - author thumbs down reaction: ${authorThumbsDown}`,
     );
 
-    if (authorThumbsDown) {
       console.log(
+        `[DEBUG] Issue #${issue.number} - checking reactions on duplicate comment...`,
+      );
+      const reactions: GitHubReaction[] = await githubRequest(
+        `/repos/${owner}/${repo}/issues/comments/${lastDupeComment.id}/reactions`,
+        token,
+      );
+      console.log(
+        `[DEBUG] Issue #${issue.number} - duplicate comment has ${reactions.length} reactions`,
+      );
+
+      const authorThumbsDown = reactions.some(
+        (reaction) =>
+          reaction.user.id === issue.user.id && reaction.content === "-1",
+      );
+      console.log(
+        `[DEBUG] Issue #${issue.number} - author thumbs down reaction: ${authorThumbsDown}`,
+      );
+
+      if (authorThumbsDown) {
+        console.log(
+          `[DEBUG] Issue #${issue.number} - author disagreed with duplicate detection, skipping`,
+        );
+        continue;
+      }
+
+      const duplicateIssueNumber = extractDuplicateIssueNumber(
+        lastDupeComment.body,
         `[DEBUG] Issue #${issue.number} - author disagreed with duplicate detection, skipping`,
       );
       continue;
@@ -554,7 +651,43 @@ export async function autoCloseDuplicates(): Promise<void> {
       console.error(
         `[ERROR] Failed to close issue #${issue.number} as duplicate: ${error}`,
       );
+      if (!duplicateIssueNumber) {
+        console.log(
+          `[DEBUG] Issue #${issue.number} - could not extract duplicate issue number from comment, skipping`,
+        );
+        continue;
+      }
+
+      candidateCount++;
+      const issueUrl = `https://github.com/${owner}/${repo}/issues/${issue.number}`;
+
+      try {
+        console.log(
+          `[INFO] Auto-closing issue #${issue.number} as duplicate of #${duplicateIssueNumber}: ${issueUrl}`,
+        );
+        await closeIssueAsDuplicate(
+          owner,
+          repo,
+          issue.number,
+          duplicateIssueNumber,
+          token,
+        );
+        console.log(
+          `[SUCCESS] Successfully closed issue #${issue.number} as duplicate of #${duplicateIssueNumber}`,
+        );
+      } catch (error) {
+        console.error(
+          `[ERROR] Failed to close issue #${issue.number} as duplicate: ${error}`,
+        );
+      }
     }
+  };
+
+  const workers = Array.from(
+    { length: Math.min(CONCURRENCY_LIMIT, issues.length) },
+    () => processIssues(),
+  );
+  await Promise.all(workers);
   }
   await Promise.all(pool);
 
