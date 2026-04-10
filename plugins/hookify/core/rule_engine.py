@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Rule evaluation engine for hookify plugin."""
 
+import os
 import re
 import sys
 from functools import lru_cache
@@ -208,8 +209,15 @@ class RuleEngine:
                 # Read transcript file if path provided
                 transcript_path = input_data.get('transcript_path')
                 if transcript_path:
+                    # SECURITY: Validate transcript_path to prevent path traversal
+                    # Allow only files in /tmp/ directory for safety
+                    abs_path = os.path.abspath(transcript_path)
+                    if not abs_path.startswith('/tmp/'):
+                        print(f"Warning: Unauthorized transcript path blocked: {transcript_path}", file=sys.stderr)
+                        return ''
+
                     try:
-                        with open(transcript_path, 'r') as f:
+                        with open(abs_path, 'r') as f:
                             return f.read()
                     except FileNotFoundError:
                         print(f"Warning: Transcript file not found: {transcript_path}", file=sys.stderr)
