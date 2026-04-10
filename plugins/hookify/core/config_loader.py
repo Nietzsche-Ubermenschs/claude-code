@@ -274,24 +274,3 @@ def load_rule_file(file_path: str) -> Optional[Rule]:
         return None
 
 
-# For testing
-if __name__ == '__main__':
-    import sys
-
-    # Test frontmatter parsing
-    test_content = """---
-name: test-rule
-enabled: true
-event: bash
-pattern: "rm -rf"
----
-
-⚠️ Dangerous command detected!
-"""
-
-    fm, msg = extract_frontmatter(test_content)
-    print("Frontmatter:", fm)
-    print("Message:", msg)
-
-    rule = Rule.from_dict(fm, msg)
-    print("Rule:", rule)
