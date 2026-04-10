@@ -127,6 +127,7 @@ Environment Variables:
         !("pull_request" in issue) &&
         issue.number >= minIssueNumber &&
         issue.number < maxIssueNumber,
+        issue.number >= minIssueNumber && issue.number < maxIssueNumber,
     );
     allIssues.push(...filteredIssues);
 
@@ -165,7 +166,10 @@ Environment Variables:
   let candidateCount = 0;
   let triggeredCount = 0;
 
-  for (const issue of allIssues) {
+  const CONCURRENCY_LIMIT = 10;
+  let currentIndex = 0;
+
+  const processIssue = async (issue: GitHubIssue) => {
     processedCount++;
     console.log(
       `[DEBUG] Processing issue #${issue.number} (${processedCount}/${allIssues.length}): ${issue.title}`,
@@ -197,7 +201,7 @@ Environment Variables:
       console.log(
         `[DEBUG] Issue #${issue.number} already has duplicate detection comment, skipping`,
       );
-      continue;
+      return;
     }
 
     candidateCount++;
@@ -224,6 +228,18 @@ Environment Variables:
     // Add a delay between workflow triggers to avoid overwhelming the system
     await new Promise((resolve) => setTimeout(resolve, 1000));
   }
+  };
+
+  const workers = Array(CONCURRENCY_LIMIT)
+    .fill(0)
+    .map(async () => {
+      while (currentIndex < allIssues.length) {
+        const issue = allIssues[currentIndex++];
+        await processIssue(issue);
+      }
+    });
+
+  await Promise.all(workers);
 
   console.log(
     `[DEBUG] Script completed. Processed ${processedCount} issues, found ${candidateCount} candidates without duplicate comments, ${dryRun ? "would trigger" : "triggered"} ${triggeredCount} workflows`,
