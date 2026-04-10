@@ -46,19 +46,21 @@ async function githubRequest<T>(endpoint: string, token: string, method: string 
   return response.json();
 }
 
-function extractDuplicateIssueNumber(commentBody: string): number | null {
-  // Try to match #123 format first
-  let match = commentBody.match(/#(\d+)/);
+export function extractDuplicateIssueNumber(commentBody: string): number | null {
+  // Try to match #123 format first, ensuring it's not part of a word
+  // but allows punctuation before it (e.g. (#123))
+  let match = commentBody.match(/(?<!\w)#(\d+)\b/);
   if (match) {
     return parseInt(match[1], 10);
   }
-  
+
   // Try to match GitHub issue URL format: https://github.com/owner/repo/issues/123
+  // Handles optional trailing slash and doesn't require it to be at the end of the string
   match = commentBody.match(/github\.com\/[^\/]+\/[^\/]+\/issues\/(\d+)/);
   if (match) {
     return parseInt(match[1], 10);
   }
-  
+
   return null;
 }
 
@@ -271,7 +273,6 @@ async function autoCloseDuplicates(): Promise<void> {
   );
 }
 
-autoCloseDuplicates().catch(console.error);
-
-// Make it a module
-export {};
+if (import.meta.main) {
+  autoCloseDuplicates().catch(console.error);
+}
