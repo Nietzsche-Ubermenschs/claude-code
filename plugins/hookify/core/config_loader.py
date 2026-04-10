@@ -122,7 +122,11 @@ def extract_frontmatter(content: str) -> tuple[Dict[str, Any], str]:
         indent = len(line) - len(line.lstrip())
 
         # Top-level key (no indentation or minimal)
-        if indent == 0 and ':' in line and not line.strip().startswith('-'):
+        if indent == 0 and not line.strip().startswith('-'):
+            key, sep, value = line.partition(':')
+            if not sep:
+                continue
+
             # Save previous list/dict if any
             if in_list and current_key:
                 if in_dict_item and current_dict:
@@ -133,7 +137,6 @@ def extract_frontmatter(content: str) -> tuple[Dict[str, Any], str]:
                 in_dict_item = False
                 current_list = []
 
-            key, value = line.split(':', 1)
             key = key.strip()
             value = value.strip()
 
@@ -165,26 +168,28 @@ def extract_frontmatter(content: str) -> tuple[Dict[str, Any], str]:
                 # Inline comma-separated dict: "- field: command, operator: regex_match"
                 item_dict = {}
                 for part in item_text.split(','):
-                    if ':' in part:
-                        k, v = part.split(':', 1)
+                    k, sep, v = part.partition(':')
+                    if sep:
                         item_dict[k.strip()] = v.strip().strip('"').strip("'")
                 current_list.append(item_dict)
                 in_dict_item = False
-            elif ':' in item_text:
-                # Start of multi-line dict item: "- field: command"
-                in_dict_item = True
-                k, v = item_text.split(':', 1)
-                current_dict = {k.strip(): v.strip().strip('"').strip("'")}
             else:
-                # Simple list item
-                current_list.append(item_text.strip('"').strip("'"))
-                in_dict_item = False
+                k, sep, v = item_text.partition(':')
+                if sep:
+                    # Start of multi-line dict item: "- field: command"
+                    in_dict_item = True
+                    current_dict = {k.strip(): v.strip().strip('"').strip("'")}
+                else:
+                    # Simple list item
+                    current_list.append(item_text.strip('"').strip("'"))
+                    in_dict_item = False
 
         # Continuation of dict item (indented under list item)
-        elif indent > 2 and in_dict_item and ':' in line:
-            # This is a field of the current dict item
-            k, v = stripped.split(':', 1)
-            current_dict[k.strip()] = v.strip().strip('"').strip("'")
+        elif indent > 2 and in_dict_item:
+            k, sep, v = stripped.partition(':')
+            if sep:
+                # This is a field of the current dict item
+                current_dict[k.strip()] = v.strip().strip('"').strip("'")
 
     # Save final list/dict if any
     if in_list and current_key:
