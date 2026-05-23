@@ -28,9 +28,10 @@ export async function githubRequest<T>(
   token: string,
   method: string = 'GET',
   body?: any,
-  userAgent: string = 'claude-code-scripts'
+  userAgent: string = 'claude-code-scripts',
+  baseUrl: string = 'https://api.github.com'
 ): Promise<T> {
-  const response = await fetch(`https://api.github.com${endpoint}`, {
+  const response = await fetch(`${baseUrl}${endpoint}`, {
     method,
     headers: {
       Authorization: `Bearer ${token}`,
